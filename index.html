@@ -1,27 +1,502 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>QR File Transfer Mobile</title>
-<link rel="stylesheet" href="styles.css" />
-<!-- Библиотека QR для генерации -->
-<script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
-<!-- Библиотека сканирования QR -->
-<script src="https://unpkg.com/html5-qrcode"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR File Transfer</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 100%;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .btn {
+            padding: 15px 30px;
+            font-size: 18px;
+            border: none;
+            border-radius: 50px;
+            background-color: #4285f4;
+            color: white;
+            cursor: pointer;
+            width: 80%;
+            max-width: 300px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn.receive {
+            background-color: #34a853;
+        }
+        
+        .qr-container {
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        #qrAnimation {
+            width: 250px;
+            height: 250px;
+            border: 10px solid white;
+            border-radius: 50%;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+        
+        #videoContainer {
+            position: relative;
+            width: 250px;
+            height: 250px;
+            border-radius: 50%;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            display: none;
+        }
+        
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        #canvas {
+            display: none;
+        }
+        
+        .progress-container {
+            width: 80%;
+            max-width: 300px;
+            background-color: #e0e0e0;
+            border-radius: 10px;
+            margin: 10px 0;
+            display: none;
+        }
+        
+        .progress-bar {
+            height: 20px;
+            border-radius: 10px;
+            background-color: #4285f4;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        
+        .status {
+            margin: 10px 0;
+            font-size: 16px;
+            text-align: center;
+        }
+        
+        .file-info {
+            margin: 10px 0;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        @media (max-width: 480px) {
+            .btn {
+                width: 90%;
+            }
+            
+            #qrAnimation, #videoContainer {
+                width: 200px;
+                height: 200px;
+            }
+        }
+    </style>
 </head>
 <body>
+    <div class="container">
+        <h1>QR File Transfer</h1>
+        
+        <button id="sendBtn" class="btn">Send File</button>
+        <input type="file" id="fileInput" style="display: none;">
+        
+        <button id="receiveBtn" class="btn receive">Receive File</button>
+        
+        <div class="qr-container">
+            <div id="qrAnimation"></div>
+            <div id="videoContainer">
+                <video id="video" playsinline></video>
+                <canvas id="canvas"></canvas>
+            </div>
+        </div>
+        
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        
+        <div class="status" id="status"></div>
+        <div class="file-info" id="fileInfo"></div>
+    </div>
 
-<h2>QR File Transfer</h2>
-<button id="sendBtn">Отправить файл</button>
-<button id="receiveBtn">Получить файл</button>
+    <script>
+        // Global variables
+        let qrFrames = [];
+        let currentFrame = 0;
+        let animationInterval;
+        let fileChunks = [];
+        let receivedChunks = {};
+        let totalChunks = 0;
+        let fileName = '';
+        let fileType = '';
+        let fileSize = 0;
+        let scanning = false;
+        let videoStream = null;
 
-<div id="qrcode"></div>
-<div id="scanner" style="display:none;">
-  <div id="reader"></div>
-</div>
-<div id="status"></div>
+        // DOM elements
+        const sendBtn = document.getElementById('sendBtn');
+        const receiveBtn = document.getElementById('receiveBtn');
+        const fileInput = document.getElementById('fileInput');
+        const qrAnimation = document.getElementById('qrAnimation');
+        const videoContainer = document.getElementById('videoContainer');
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const status = document.getElementById('status');
+        const fileInfo = document.getElementById('fileInfo');
 
-<script src="app.js"></script>
+        // Event listeners
+        sendBtn.addEventListener('click', handleSend);
+        receiveBtn.addEventListener('click', handleReceive);
+        fileInput.addEventListener('change', handleFileSelect);
+
+        // Handle Send button click
+        function handleSend() {
+            if (scanning) {
+                stopScanning();
+            }
+            fileInput.click();
+        }
+
+        // Handle file selection
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            fileName = file.name;
+            fileType = file.type;
+            fileSize = file.size;
+            
+            fileInfo.textContent = `File: ${fileName} (${formatFileSize(fileSize)})`;
+            status.textContent = 'Preparing file for transfer...';
+
+            // Read file and split into chunks
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const fileData = e.target.result;
+                prepareFileChunks(fileData);
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // Split file into chunks and generate QR codes
+        function prepareFileChunks(fileData) {
+            // Reset previous state
+            qrFrames = [];
+            currentFrame = 0;
+            clearInterval(animationInterval);
+            
+            // Calculate chunk size (adjust based on QR code capacity)
+            const maxChunkSize = 1000; // bytes
+            totalChunks = Math.ceil(fileData.byteLength / maxChunkSize);
+            
+            // Add metadata as first chunk
+            const metadata = JSON.stringify({
+                name: fileName,
+                type: fileType,
+                size: fileSize,
+                total: totalChunks
+            });
+            
+            fileChunks = [metadata];
+            
+            // Split file data into chunks
+            for (let i = 0; i < totalChunks; i++) {
+                const start = i * maxChunkSize;
+                const end = Math.min(start + maxChunkSize, fileData.byteLength);
+                const chunk = fileData.slice(start, end);
+                fileChunks.push(chunk);
+            }
+            
+            // Generate QR codes for each chunk
+            generateQRCodes();
+            
+            // Start animation
+            startQRAnimation();
+            
+            status.textContent = 'Showing QR codes. Point receiver to this screen.';
+            progressContainer.style.display = 'block';
+            updateProgress(0);
+        }
+
+        // Generate QR codes for each chunk
+        function generateQRCodes() {
+            qrFrames = fileChunks.map((chunk, index) => {
+                // Convert chunk to base64 for QR code
+                let data;
+                if (index === 0) {
+                    data = chunk; // Metadata is already JSON string
+                } else {
+                    // For binary data, convert to base64
+                    const byteArray = new Uint8Array(chunk);
+                    data = btoa(String.fromCharCode.apply(null, byteArray));
+                }
+                
+                // Add index to data for synchronization
+                const qrData = `${index}|${data}`;
+                
+                // Generate QR code
+                const qr = qrcode(0, 'M');
+                qr.addData(qrData);
+                qr.make();
+                
+                return qr.createImgTag(10); // 10px modules
+            });
+        }
+
+        // Start QR code animation
+        function startQRAnimation() {
+            // Show first frame
+            qrAnimation.innerHTML = qrFrames[0];
+            currentFrame = 0;
+            
+            // Start animation cycle (change frame every 300ms)
+            animationInterval = setInterval(() => {
+                currentFrame = (currentFrame + 1) % qrFrames.length;
+                qrAnimation.innerHTML = qrFrames[currentFrame];
+                
+                // Update progress for metadata frame
+                if (currentFrame === 0) {
+                    updateProgress(0);
+                } else {
+                    updateProgress(currentFrame / totalChunks * 100);
+                }
+            }, 300);
+            
+            qrAnimation.style.display = 'block';
+            videoContainer.style.display = 'none';
+        }
+
+        // Stop QR code animation
+        function stopQRAnimation() {
+            clearInterval(animationInterval);
+            qrAnimation.style.display = 'none';
+        }
+
+        // Handle Receive button click
+        function handleReceive() {
+            stopQRAnimation();
+            startScanning();
+        }
+
+        // Start camera and QR scanning
+        function startScanning() {
+            scanning = true;
+            status.textContent = 'Preparing camera...';
+            fileInfo.textContent = '';
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            
+            // Reset received chunks
+            receivedChunks = {};
+            
+            // Request camera access
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+                .then(function(stream) {
+                    videoStream = stream;
+                    video.srcObject = stream;
+                    video.play();
+                    videoContainer.style.display = 'block';
+                    qrAnimation.style.display = 'none';
+                    status.textContent = 'Scanning for QR codes...';
+                    
+                    // Start scanning loop
+                    scanQRCode();
+                })
+                .catch(function(err) {
+                    console.error("Camera error: ", err);
+                    status.textContent = 'Could not access camera. Please allow camera permissions.';
+                    scanning = false;
+                });
+        }
+
+        // Stop camera and scanning
+        function stopScanning() {
+            scanning = false;
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+            }
+            videoContainer.style.display = 'none';
+        }
+
+        // QR code scanning loop
+        function scanQRCode() {
+            if (!scanning) return;
+            
+            // Set canvas dimensions to match video
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // Get image data from canvas
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: 'dontInvert',
+                });
+                
+                // If QR code found
+                if (code) {
+                    processQRCode(code.data);
+                }
+            }
+            
+            // Continue scanning
+            requestAnimationFrame(scanQRCode);
+        }
+
+        // Process scanned QR code data
+        function processQRCode(data) {
+            try {
+                const separatorIndex = data.indexOf('|');
+                if (separatorIndex === -1) return;
+                
+                const index = parseInt(data.substring(0, separatorIndex));
+                const payload = data.substring(separatorIndex + 1);
+                
+                // If we haven't received this chunk yet
+                if (!receivedChunks[index]) {
+                    receivedChunks[index] = payload;
+                    
+                    // First chunk is metadata
+                    if (index === 0) {
+                        const metadata = JSON.parse(payload);
+                        fileName = metadata.name;
+                        fileType = metadata.type;
+                        fileSize = metadata.size;
+                        totalChunks = metadata.total;
+                        
+                        fileInfo.textContent = `Receiving: ${fileName} (${formatFileSize(fileSize)})`;
+                        status.textContent = 'Receiving file data...';
+                    }
+                    
+                    // Update progress
+                    const receivedCount = Object.keys(receivedChunks).length - 1; // exclude metadata
+                    const progress = receivedCount / totalChunks * 100;
+                    updateProgress(progress);
+                    
+                    // Check if all chunks received
+                    if (Object.keys(receivedChunks).length === totalChunks + 1) { // +1 for metadata
+                        reconstructFile();
+                    }
+                }
+            } catch (e) {
+                console.error("Error processing QR code:", e);
+            }
+        }
+
+        // Reconstruct file from received chunks
+        function reconstructFile() {
+            status.textContent = 'Reconstructing file...';
+            
+            try {
+                // Get metadata
+                const metadata = JSON.parse(receivedChunks[0]);
+                
+                // Collect and order all data chunks
+                const chunks = [];
+                for (let i = 1; i <= metadata.total; i++) {
+                    if (!receivedChunks[i]) {
+                        throw new Error(`Missing chunk ${i}`);
+                    }
+                    
+                    // Convert base64 back to binary
+                    const binaryString = atob(receivedChunks[i]);
+                    const bytes = new Uint8Array(binaryString.length);
+                    for (let j = 0; j < binaryString.length; j++) {
+                        bytes[j] = binaryString.charCodeAt(j);
+                    }
+                    chunks.push(bytes);
+                }
+                
+                // Combine all chunks
+                const totalLength = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+                const result = new Uint8Array(totalLength);
+                let offset = 0;
+                chunks.forEach(chunk => {
+                    result.set(chunk, offset);
+                    offset += chunk.length;
+                });
+                
+                // Create blob and download
+                const blob = new Blob([result], { type: metadata.type });
+                const url = URL.createObjectURL(blob);
+                
+                // Create download link
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = metadata.name || 'downloaded_file';
+                document.body.appendChild(a);
+                a.click();
+                
+                // Cleanup
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 100);
+                
+                status.textContent = 'File received successfully!';
+                updateProgress(100);
+                stopScanning();
+            } catch (e) {
+                console.error("Error reconstructing file:", e);
+                status.textContent = 'Error reconstructing file. Please try again.';
+            }
+        }
+
+        // Update progress bar
+        function updateProgress(percent) {
+            progressBar.style.width = `${percent}%`;
+        }
+
+        // Format file size
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2) + ' ' + sizes[i];
+        }
+
+        // Cleanup when page unloads
+        window.addEventListener('beforeunload', () => {
+            stopQRAnimation();
+            stopScanning();
+        });
+    </script>
 </body>
 </html>
