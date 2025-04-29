@@ -54,11 +54,13 @@
             margin: 20px 0;
             text-align: center;
             position: relative;
+            width: 300px;
+            height: 300px;
         }
         
         #qrAnimation {
-            width: 500px;
-            height: 500px;
+            width: 100%;
+            height: 100%;
             border-radius: 5%;
             overflow: hidden;
             position: relative;
@@ -68,16 +70,28 @@
             justify-content: center;
             align-items: center;
         }
-
+        
         .qr-frame {
-            max-width: 95%;
-            max-height: 95%;
+            width: 95% !important;
+            height: 95% !important;
             object-fit: contain;
             display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
         }
         
         .qr-frame.active {
             display: block;
+        }
+        
+        /* Adjust for mobile */
+        @media (max-width: 480px) {
+            .qr-container {
+                width: 250px;
+                height: 250px;
+            }
         }
 
         #videoContainer {
@@ -271,6 +285,7 @@
 
         // Modify the generateQRCodes function to create proper image elements
         function generateQRCodes() {
+                    function generateQRCodes() {
             // Clear previous frames
             qrAnimation.innerHTML = '';
             qrFrames = [];
@@ -289,118 +304,46 @@
                 // Add index to data for synchronization
                 const qrData = `${index}|${data}`;
                 
-                // Generate QR code
-                const qr = qrcode(0, 'M');
+                // Generate QR code with higher error correction
+                const qr = qrcode(0, 'H'); // 'H' for High error correction
                 qr.addData(qrData);
                 qr.make();
                 
-                // Create an image element for each QR code
+                // Create canvas for better quality control
+                const canvas = document.createElement('canvas');
+                const size = 500; // Larger base size for better quality
+                const cellSize = 5; // Larger cell size
+                const margin = 0; // No margin to maximize space
+                
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                
+                // Draw QR code
+                for (let row = 0; row < qr.getModuleCount(); row++) {
+                    for (let col = 0; col < qr.getModuleCount(); col++) {
+                        ctx.fillStyle = qr.isDark(row, col) ? '#000000' : '#ffffff';
+                        ctx.fillRect(
+                            margin + col * cellSize,
+                            margin + row * cellSize,
+                            cellSize,
+                            cellSize
+                        );
+                    }
+                }
+                
+                // Create image element
                 const img = document.createElement('img');
                 img.className = 'qr-frame';
                 img.alt = `QR Code ${index}`;
-                
-                // Convert QR code to data URL
-                const size = 200; // Size of QR code in pixels
-                const cellSize = Math.floor(size / qr.getModuleCount());
-                const margin = Math.floor((size - qr.getModuleCount() * cellSize) / 2);
-                
-                const url = qr.createDataURL(cellSize, margin);
-                img.src = url;
+                img.src = canvas.toDataURL('image/png');
                 
                 qrAnimation.appendChild(img);
                 qrFrames.push(img);
             });
         }
-
-        // Modify the startQRAnimation function to handle the new frame structure
-        function startQRAnimation() {
-            // Reset animation
-            currentFrame = 0;
-            clearInterval(animationInterval);
-            
-            // Hide all frames first
-            qrFrames.forEach(frame => frame.classList.remove('active'));
-            
-            // Show first frame
-            if (qrFrames.length > 0) {
-                qrFrames[0].classList.add('active');
-            }
-            
-            // Start animation cycle (change frame every 300ms)
-            animationInterval = setInterval(() => {
-                // Hide current frame
-                if (qrFrames[currentFrame]) {
-                    qrFrames[currentFrame].classList.remove('active');
-                }
-                
-                // Move to next frame
-                currentFrame = (currentFrame + 1) % qrFrames.length;
-                
-                // Show new frame
-                if (qrFrames[currentFrame]) {
-                    qrFrames[currentFrame].classList.add('active');
-                }
-                
-                // Update progress for metadata frame
-                if (currentFrame === 0) {
-                    updateProgress(0);
-                } else {
-                    updateProgress(currentFrame / totalChunks * 100);
-                }
-            }, 300);
-            
-            qrAnimation.style.display = 'flex';
-            videoContainer.style.display = 'none';
         }
 
-      /*  // Generate QR codes for each chunk
-        function generateQRCodes() {
-            qrFrames = fileChunks.map((chunk, index) => {
-                // Convert chunk to base64 for QR code
-                let data;
-                if (index === 0) {
-                    data = chunk; // Metadata is already JSON string
-                } else {
-                    // For binary data, convert to base64
-                    const byteArray = new Uint8Array(chunk);
-                    data = btoa(String.fromCharCode.apply(null, byteArray));
-                }
-                
-                // Add index to data for synchronization
-                const qrData = `${index}|${data}`;
-                
-                // Generate QR code
-                const qr = qrcode(0, 'M');
-                qr.addData(qrData);
-                qr.make();
-                
-                return qr.createImgTag(10); // 10px modules
-            });
-        }
-
-        // Start QR code animation
-        function startQRAnimation() {
-            // Show first frame
-            qrAnimation.innerHTML = qrFrames[0];
-            currentFrame = 0;
-            
-            // Start animation cycle (change frame every 300ms)
-            animationInterval = setInterval(() => {
-                currentFrame = (currentFrame + 1) % qrFrames.length;
-                qrAnimation.innerHTML = qrFrames[currentFrame];
-                
-                // Update progress for metadata frame
-                if (currentFrame === 0) {
-                    updateProgress(0);
-                } else {
-                    updateProgress(currentFrame / totalChunks * 100);
-                }
-            }, 300);
-            
-            qrAnimation.style.display = 'block';
-            videoContainer.style.display = 'none';
-        }
-*/
         // Stop QR code animation
         function stopQRAnimation() {
             clearInterval(animationInterval);
