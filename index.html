@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>QR File Transfer</title>
+<title>QR File Transfer Mobile</title>
 
 <!-- Библиотека для генерации QR -->
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
@@ -11,124 +11,173 @@
 <script src="https://unpkg.com/html5-qrcode"></script>
 
 <style>
-  body { font-family: Arial, sans-serif; margin: 20px; }
-  #qrcode { margin: 20px auto; width: 300px; height: 300px; }
-  #video { width: 100%; max-width: 400px; }
-  button { margin: 10px; padding: 10px 20px; font-size: 16px; }
+  body { font-family: Arial, sans-serif; margin: 0; padding: 10px; background: #f0f0f0; }
+  h2 { text-align: center; }
+  button { display: block; width: 80%; margin: 10px auto; padding: 15px; font-size: 18px; border-radius: 8px; background: #007bff; color: #fff; border: none; }
+  #qrcode { margin: 10px auto; width: 300px; height: 300px; background: #fff; display: flex; align-items: center; justify-content: center; }
+  #scanner { display: none; margin-top: 10px; }
+  #reader { width: 100%; max-width: 400px; margin: auto; }
+  #status { text-align: center; margin-top: 10px; font-weight: bold; }
 </style>
 </head>
 <body>
 
 <h2>QR File Transfer</h2>
-<button id="sendBtn">Send</button>
-<button id="receiveBtn">Receive</button>
+<button id="sendBtn">Отправить файл</button>
+<button id="receiveBtn">Получить файл</button>
+<button id="startScanBtn" style="display:none;">Начать сканирование</button>
+<button id="stopScanBtn" style="display:none;">Остановить сканирование</button>
 
 <div id="qrcode"></div>
-<div id="scanner" style="display:none;">
-  <h3>Сканируйте QR-коды</h3>
-  <div id="reader" style="width:300px; height:300px;"></div>
+<div id="scanner">
+  <div id="reader"></div>
 </div>
+<div id="status"></div>
 
 <script>
+const CHUNK_SIZE = 100; // байтов, для ускорения
 let fileParts = [];
-let receivedData = "";
-const chunkSize = 200; // размер части файла в байтах
-let fileReader, fileBuffer, fileSize, receivedBuffer = [];
+let receivedParts = [];
+let totalPartsCount = 0;
+let currentSendingIndex = 0;
 
+// Для сканера
+let html5QrCode = null;
+
+// Обработка отправки файла
 document.getElementById('sendBtn').onclick = () => {
-  // Выбор файла
   let input = document.createElement('input');
   input.type = 'file';
+  input.accept = '*/*';
   input.onchange = e => {
     const file = e.target.files[0];
     const reader = new FileReader();
     reader.onload = () => {
-      fileBuffer = new Uint8Array(reader.result);
-      fileSize = fileBuffer.length;
-      sendFile(fileBuffer);
+      const buffer = new Uint8Array(reader.result);
+      // Разделение файла
+      fileParts = [];
+      for (let i=0; i<buffer.length; i+=CHUNK_SIZE) {
+        fileParts.push(buffer.slice(i, i+CHUNK_SIZE));
+      }
+      totalPartsCount = fileParts.length;
+      currentSendingIndex = 0;
+      document.getElementById('status').innerText = `Передача: 0 / ${totalPartsCount} частей`;
+      sendNextPart();
     };
     reader.readAsArrayBuffer(file);
   };
   input.click();
 };
 
-function sendFile(buffer) {
-  // Разбиваем файл на части
-  for (let i = 0; i < buffer.length; i += chunkSize) {
-    fileParts.push(buffer.slice(i, i + chunkSize));
-  }
-  // Генерируем QR-коды по очереди
-  showNextPart(0);
-}
-
-function showNextPart(index) {
-  if (index >= fileParts.length) {
-    alert("Передача завершена");
+function sendNextPart() {
+  if (currentSendingIndex >= fileParts.length) {
+    alert('Передача завершена!');
+    document.getElementById('status').innerText = 'Передача завершена!';
     return;
   }
-  const part = fileParts[index];
-  const base64Part = btoa(String.fromCharCode.apply(null, part));
-  // Создаем QR-код
+  const part = fileParts[currentSendingIndex];
+  const base64Data = btoa(String.fromCharCode.apply(null, part));
+  const message = {
+    index: currentSendingIndex,
+    total: totalPartsCount,
+    data: base64Data
+  };
+  // Генерация QR-кода с JSON
   document.getElementById('qrcode').innerHTML = "";
   new QRCode(document.getElementById('qrcode'), {
-    text: JSON.stringify({index, total: fileParts.length, data: base64Part}),
+    text: JSON.stringify(message),
     width: 300,
     height: 300
   });
-  // Можно автоматически переключаться или добавлять кнопку "Следующий"
-  // для демонстрации, здесь просто ждем 3 сек и переходим
-  setTimeout(() => showNextPart(index + 1), 3000);
+  // Обновляем статус
+  document.getElementById('status').innerText = `Передача: ${currentSendingIndex+1} / ${totalPartsCount} частей`;
+  currentSendingIndex++;
+  // Автоматическая отправка следующей части через 2 сек
+  setTimeout(sendNextPart, 2000);
 }
 
+// Обработка получения файла
 document.getElementById('receiveBtn').onclick = () => {
-  // Запускаем сканер
   document.getElementById('scanner').style.display = 'block';
+  document.getElementById('startScanBtn').style.display = 'block';
+  document.getElementById('stopScanBtn').style.display = 'none';
+  receivedParts = [];
+};
+
+document.getElementById('startScanBtn').onclick = () => {
   startScanning();
+  document.getElementById('startScanBtn').style.display = 'none';
+  document.getElementById('stopScanBtn').style.display = 'block';
+};
+
+document.getElementById('stopScanBtn').onclick = () => {
+  if (html5QrCode) {
+    html5QrCode.stop().then(() => {
+      document.getElementById('reader').innerHTML = '';
+      document.getElementById('scanner').style.display = 'none';
+      document.getElementById('startScanBtn').style.display = 'none';
+      document.getElementById('stopScanBtn').style.display = 'none';
+      assembleFile();
+    });
+  }
 };
 
 function startScanning() {
-  const html5QrCode = new Html5Qrcode("reader");
-  html5QrCode.start({ facingMode: "environment" }, {
-    fps: 10,
-    qrbox: 250
-  }, qrCodeMessage => {
-    // Обработка сканированного QR-кода
-    try {
-      const json = JSON.parse(qrCodeMessage);
-      const { index, total, data } = json;
-      const decodedData = atob(data);
-      // сохраняем часть файла по индексу
-      receivedBuffer[index] = new Uint8Array([...decodedData].map(c => c.charCodeAt(0)));
-      
-      // Проверяем, все ли получены
-      if (receivedBuffer.filter(Boolean).length === total) {
-        // Собираем файл
-        const result = new Uint8Array(receivedBuffer.reduce((acc, val) => {
-          const newArr = new Uint8Array(acc.length + val.length);
-          newArr.set(acc, 0);
-          newArr.set(val, acc.length);
-          return newArr;
-        }, new Uint8Array(0)));
-        
-        // Создаем скачиваемый файл
-        const blob = new Blob([result]);
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'received_file';
-        a.click();
-        alert('Файл получен!');
-        html5QrCode.stop();
-        document.getElementById('scanner').style.display = 'none';
-      }
-    } catch(e) {
-      console.error('Ошибка при обработке QR-кода', e);
+  document.getElementById('reader').innerHTML = '';
+  html5QrCode = new Html5Qrcode("reader");
+  Html5Qrcode.getCameras().then(cameras => {
+    if (cameras && cameras.length) {
+      html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        qrCodeMessage => {
+          try {
+            const msg = JSON.parse(qrCodeMessage);
+            const { index, total, data } = msg;
+            const decodedData = atob(data);
+            // Сохраняем часть по индексу
+            receivedParts[index] = new Uint8Array([...decodedData].map(c => c.charCodeAt(0)));
+            document.getElementById('status').innerText = `Получено: ${index+1}/${total}`;
+            // Проверяем, все ли получены
+            if (receivedParts.filter(Boolean).length === total) {
+              assembleFile();
+            }
+          } catch (e) {
+            console.error('Ошибка обработки QR', e);
+          }
+        },
+        errorMessage => {
+          // Игнорируем ошибки
+        }
+      );
+    } else {
+      alert('Камеры не найдены');
     }
-  }, errorMessage => {
-    // Обработка ошибок
-  });
+  }).catch(err => console.error('Ошибка доступа к камере', err));
 }
 
+function assembleFile() {
+  // Восстанавливаем файл из частей
+  const totalParts = receivedParts.length;
+  const totalSize = receivedParts.reduce((sum, part) => sum + part.length, 0);
+  const result = new Uint8Array(totalSize);
+  let offset = 0;
+  for (let part of receivedParts) {
+    result.set(part, offset);
+    offset += part.length;
+  }
+  // Создаем файл для скачивания
+  const blob = new Blob([result]);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'received_file';
+  a.click();
+  alert('Файл получен!');
+  document.getElementById('scanner').style.display = 'none';
+  document.getElementById('status').innerText = 'Готово!';
+}
 </script>
+
 </body>
 </html>
