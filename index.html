@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>QR File Transfer</title>
+
+<!-- Библиотека для генерации QR -->
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
+<!-- Библиотека для сканирования QR -->
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<style>
+  body { font-family: Arial, sans-serif; margin: 20px; }
+  #qrcode { margin: 20px auto; width: 300px; height: 300px; }
+  #video { width: 100%; max-width: 400px; }
+  button { margin: 10px; padding: 10px 20px; font-size: 16px; }
+</style>
+</head>
+<body>
+
+<h2>QR File Transfer</h2>
+<button id="sendBtn">Send</button>
+<button id="receiveBtn">Receive</button>
+
+<div id="qrcode"></div>
+<div id="scanner" style="display:none;">
+  <h3>Сканируйте QR-коды</h3>
+  <div id="reader" style="width:300px; height:300px;"></div>
+</div>
+
+<script>
+let fileParts = [];
+let receivedData = "";
+const chunkSize = 200; // размер части файла в байтах
+let fileReader, fileBuffer, fileSize, receivedBuffer = [];
+
+document.getElementById('sendBtn').onclick = () => {
+  // Выбор файла
+  let input = document.createElement('input');
+  input.type = 'file';
+  input.onchange = e => {
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    reader.onload = () => {
+      fileBuffer = new Uint8Array(reader.result);
+      fileSize = fileBuffer.length;
+      sendFile(fileBuffer);
+    };
+    reader.readAsArrayBuffer(file);
+  };
+  input.click();
+};
+
+function sendFile(buffer) {
+  // Разбиваем файл на части
+  for (let i = 0; i < buffer.length; i += chunkSize) {
+    fileParts.push(buffer.slice(i, i + chunkSize));
+  }
+  // Генерируем QR-коды по очереди
+  showNextPart(0);
+}
+
+function showNextPart(index) {
+  if (index >= fileParts.length) {
+    alert("Передача завершена");
+    return;
+  }
+  const part = fileParts[index];
+  const base64Part = btoa(String.fromCharCode.apply(null, part));
+  // Создаем QR-код
+  document.getElementById('qrcode').innerHTML = "";
+  new QRCode(document.getElementById('qrcode'), {
+    text: JSON.stringify({index, total: fileParts.length, data: base64Part}),
+    width: 300,
+    height: 300
+  });
+  // Можно автоматически переключаться или добавлять кнопку "Следующий"
+  // для демонстрации, здесь просто ждем 3 сек и переходим
+  setTimeout(() => showNextPart(index + 1), 3000);
+}
+
+document.getElementById('receiveBtn').onclick = () => {
+  // Запускаем сканер
+  document.getElementById('scanner').style.display = 'block';
+  startScanning();
+};
+
+function startScanning() {
+  const html5QrCode = new Html5Qrcode("reader");
+  html5QrCode.start({ facingMode: "environment" }, {
+    fps: 10,
+    qrbox: 250
+  }, qrCodeMessage => {
+    // Обработка сканированного QR-кода
+    try {
+      const json = JSON.parse(qrCodeMessage);
+      const { index, total, data } = json;
+      const decodedData = atob(data);
+      // сохраняем часть файла по индексу
+      receivedBuffer[index] = new Uint8Array([...decodedData].map(c => c.charCodeAt(0)));
+      
+      // Проверяем, все ли получены
+      if (receivedBuffer.filter(Boolean).length === total) {
+        // Собираем файл
+        const result = new Uint8Array(receivedBuffer.reduce((acc, val) => {
+          const newArr = new Uint8Array(acc.length + val.length);
+          newArr.set(acc, 0);
+          newArr.set(val, acc.length);
+          return newArr;
+        }, new Uint8Array(0)));
+        
+        // Создаем скачиваемый файл
+        const blob = new Blob([result]);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'received_file';
+        a.click();
+        alert('Файл получен!');
+        html5QrCode.stop();
+        document.getElementById('scanner').style.display = 'none';
+      }
+    } catch(e) {
+      console.error('Ошибка при обработке QR-кода', e);
+    }
+  }, errorMessage => {
+    // Обработка ошибок
+  });
+}
+
+</script>
+</body>
+</html>
