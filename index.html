@@ -135,8 +135,8 @@
             }
             
             #qrAnimation, #videoContainer {
-                width: 200px;
-                height: 200px;
+                width: 500px;
+                height: 500px;
             }
         }
     </style>
@@ -236,7 +236,7 @@
             clearInterval(animationInterval);
             
             // Calculate chunk size (adjust based on QR code capacity)
-            const maxChunkSize = 500; // bytes
+            const maxChunkSize = 300; // bytes
             totalChunks = Math.ceil(fileData.byteLength / maxChunkSize);
             
             // Add metadata as first chunk
