@@ -344,6 +344,29 @@
         }
         }
 
+        // Start QR code animation
+        function startQRAnimation() {
+            // Show first frame
+            qrAnimation.innerHTML = qrFrames[0];
+            currentFrame = 0;
+            
+            // Start animation cycle (change frame every 300ms)
+            animationInterval = setInterval(() => {
+                currentFrame = (currentFrame + 1) % qrFrames.length;
+                qrAnimation.innerHTML = qrFrames[currentFrame];
+                
+                // Update progress for metadata frame
+                if (currentFrame === 0) {
+                    updateProgress(0);
+                } else {
+                    updateProgress(currentFrame / totalChunks * 100);
+                }
+            }, 300);
+            
+            qrAnimation.style.display = 'block';
+            videoContainer.style.display = 'none';
+        }
+
         // Stop QR code animation
         function stopQRAnimation() {
             clearInterval(animationInterval);
