@@ -1,0 +1,7 @@
+body { font-family: Arial, sans-serif; margin: 0; padding: 10px; background: #f0f0f0; }
+h2 { text-align: center; }
+button { display: block; width: 80%; margin: 10px auto; padding: 15px; font-size: 18px; border-radius: 8px; background: #007bff; color: #fff; border: none; }
+#qrcode { margin: 10px auto; width: 300px; height: 300px; background: #fff; display: flex; align-items: center; justify-content: center; }
+#scanner { display: none; margin-top: 10px; }
+#reader { width: 100%; max-width: 400px; margin: auto; }
+#status { text-align: center; margin-top: 10px; font-weight: bold; }
