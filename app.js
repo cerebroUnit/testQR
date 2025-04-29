@@ -50,7 +50,7 @@ function sendNextPart() {
   document.getElementById('status').innerText = `Передача: ${currentSendingIndex+1}/${totalPartsCount} частей`;
   currentSendingIndex++;
   // Быстрая автоматическая передача (например, 500 мс)
-  setTimeout(sendNextPart, 500);
+  setTimeout(sendNextPart, 100);
 }
 
 // Получение файла
