@@ -236,7 +236,7 @@
             clearInterval(animationInterval);
             
             // Calculate chunk size (adjust based on QR code capacity)
-            const maxChunkSize = 1000; // bytes
+            const maxChunkSize = 500; // bytes
             totalChunks = Math.ceil(fileData.byteLength / maxChunkSize);
             
             // Add metadata as first chunk
